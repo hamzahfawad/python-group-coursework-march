@@ -254,3 +254,140 @@ while True: # loop runs until manually stopped
         outlet_menu(user)
     elif user['role']=="HO":
         ho_menu()
+##################################################
+# Stock update
+##################################################
+def update_stock_for_week(week):
+    
+    week_df = sales_df[sales_df['week'] == week]
+    
+    for outlet in week_df['outlet'].unique():
+        for product in week_df['product'].unique():
+            
+            subset = sales_df[
+                (sales_df['week'] == week) &
+                (sales_df['outlet'] == outlet) &
+                (sales_df['product'] == product)
+            ]
+            
+            for i in range(1, len(subset)):
+                prev_stock = subset.iloc[i-1]['stock']
+                sales = subset.iloc[i]['sales']
+                
+                new_stock = prev_stock - sales
+                
+                sales_df.loc[subset.index[i], 'stock'] = new_stock
+
+##################################################
+# Outlet User
+##################################################
+def add_sales(user):
+    global sales_df, current_week
+    
+    outlet = user['outlet']
+    
+    product = input("Product: ")
+    day = int(input("Day (1-6): "))
+    sales = float(input("Sales: "))
+    
+    mask_today = (
+        (sales_df['outlet'] == outlet) &
+        (sales_df['product'] == product) &
+        (sales_df['week'] == current_week) &
+        (sales_df['date_serial'] == day)
+    )
+    
+    if sales_df.loc[mask_today].empty:
+        print("Invalid product/day\n")
+        return
+    
+    sales_df.loc[mask_today, 'sales'] = sales
+    
+    prev_stock = sales_df.loc[mask_today, 'stock'].values[0]
+    new_stock = prev_stock - sales
+    
+    sales_df.loc[mask_today, 'stock'] = new_stock
+    
+    print("Sales added\n")
+
+def view_stock(user):
+    
+    df = sales_df[
+        (sales_df['outlet'] == user['outlet']) &
+        (sales_df['week'] == current_week)
+    ]
+    
+    latest = df.groupby('product').last().reset_index()
+    
+    print("\nCURRENT STOCK:")
+    print(latest[['product','stock']], "\n")
+
+def view_old_data(user):
+    week = int(input("Enter week: "))
+    
+    df = sales_df[
+        (sales_df['outlet'] == user['outlet']) &
+        (sales_df['week'] == week)
+    ]
+    
+    print(df)
+
+def verify_week(user):
+    
+    sales_df.loc[
+        (sales_df['outlet'] == user['outlet']) &
+        (sales_df['week'] == current_week),
+        'locked'
+    ] = True
+    
+    print("Week verified\n")
+
+##################################################
+# Menus
+##################################################
+def it_menu():
+    while True:
+        print("1.Create System 2.Add Outlet 3.Reset Password 4.Create HO User 5.Exit")
+        c = input()
+        
+        if c=="1": create_system()
+        elif c=="2": add_outlet()
+        elif c=="3": reset_password()
+        elif c=="4": create_head_office()
+        else: break
+
+
+def outlet_menu(user):
+    while True:
+        print("1.Add Sales 2.View Stock 3.Verify Week 4.View Old Data 5.Exit")
+        c = input()
+        
+        if c=="1": add_sales(user)
+        elif c=="2": view_stock(user)
+        elif c=="3": verify_week(user)
+        elif c=="4": view_old_data(user)
+        else: break
+
+def process_week():
+    
+    weekly = sales_df[sales_df['week'] == current_week]
+    
+    report = weekly.groupby(['outlet','product']).agg({
+        'sales':'sum',
+        'stock':'last'
+    }).reset_index()
+    
+    print("\nWEEKLY REPORT:")
+    print(report)
+
+def ho_menu():
+    while True:
+        print("1.Process Week 2.Load Update 3.Exit")
+        c = input()
+        
+        if c=="1": process_week()
+        elif c=="2":
+            show_files()
+            file = input("Update file: ")
+            process_update(file)
+        else: break
