@@ -7,7 +7,7 @@ import os
 ##################################################
 sales_file = "sales_data.csv"
 users_file = "users.csv"
-current_week = 1
+current_week = 1 # tracks current week number
 
 ##################################################
 # Load / Save
@@ -15,33 +15,33 @@ current_week = 1
 def load_data():
     global sales_df, users_df
     
-    if os.path.exists(sales_file):
+    if os.path.exists(sales_file): # check if sales data file exists
         sales_df = pd.read_csv(sales_file)
-    else:
+    else: # if it does not exist create a dataframe with the following columns
         sales_df = pd.DataFrame(columns=[
             'outlet','product','date_serial',
             'sales','delivery','stock',
             'price','week','locked'
         ])
     
-    if os.path.exists(users_file):
+    if os.path.exists(users_file): # check if users data file exists, if not create dataframe
         users_df = pd.read_csv(users_file)
     else:
         users_df = pd.DataFrame([{
-            'username':'ITAdmin',
-            'password':'Admin',
+            'username':'ITAdmin', # admin username
+            'password':'Admin',  # admin password
             'role':'IT',
             'outlet':None
         }])
 
-def save_data():
+def save_data(): # save to csv
     sales_df.to_csv(sales_file, index=False)
     users_df.to_csv(users_file, index=False)
 
 ##################################################
 # Login
 ##################################################
-def login():
+def login(): # user enters login details
     username = input("ID: ")
     password = input("Password: ")
     
@@ -50,7 +50,7 @@ def login():
         (users_df['password']==password)
     ]
     
-    if user.empty:
+    if user.empty: # checks if no match was found, login failure
         print("Invalid login\n")
         return None
     
@@ -59,7 +59,7 @@ def login():
 ##################################################
 # File Helper
 ##################################################
-def show_files():
+def show_files(): # loops through all csv files in current directory
     print("\nAvailable CSV files:")
     for f in os.listdir():
         if f.endswith(".csv"):
@@ -68,12 +68,14 @@ def show_files():
 ##################################################
 # Format Detection
 ##################################################
-def detect_format(df):
+def detect_format(df): # converts column names to lowercase, makes check case-insensitive
     cols = [str(c).lower() for c in df.columns]
     
+    # if standard columns exist then assume format 2
     if 'product' in cols and 'sales' in cols:
         return 2
     
+    # otherwise assume format 1
     return 1
 
 ##################################################
@@ -81,13 +83,14 @@ def detect_format(df):
 ##################################################
 def load_format1(df, outlet):
     
-    df = df.iloc[1:]
-    df = df[df.iloc[:,0].str.lower() != "product"]
+    df = df.iloc[1:]  # remove title row
+    df = df[df.iloc[:,0].str.lower() != "product"]  # remove header row
 
     products = df.iloc[:, 0].tolist()
     
     data = []
     
+    # Detect which outlet columns to use
     if outlet == "Outlet1":
         price_col = 1
         delivery_col = 2
@@ -102,7 +105,7 @@ def load_format1(df, outlet):
         price = df.iloc[i, price_col]
         delivery = df.iloc[i, delivery_col]
         
-        for day in range(1, 7):
+        for day in range(1, 7): # create weekly structure
             data.append({
                 'outlet': outlet,
                 'product': products[i],
@@ -115,16 +118,16 @@ def load_format1(df, outlet):
                 'locked': False
             })
     
-    return pd.DataFrame(data)
+    return pd.DataFrame(data) # convert list into dataframe
 
 ##################################################
 # Load format 2
 ##################################################
 def load_format2(df, outlet):
     
-    df.columns = [c.lower() for c in df.columns]
+    df.columns = [c.lower() for c in df.columns] # convert to lowercase for consistency
     
-    required = ['product','sales','delivery','stock']
+    required = ['product','sales','delivery','stock'] # define column names
     
     for col in required:
         if col not in df.columns:
@@ -137,12 +140,12 @@ def load_format2(df, outlet):
     df['locked'] = False
     df['price'] = df.get('price', 0)
     
-    return df[['outlet','product','date_serial','sales','delivery','stock','price','week','locked']]
+    return df[['outlet','product','date_serial','sales','delivery','stock','price','week','locked']] # returns dataframe in this order
 
 ##################################################
 # General Loader
 ##################################################
-def load_outlet(file, outlet):
+def load_outlet(file, outlet): # detects which format the data is in (format1 or format2)
     df = pd.read_csv(file)
     
     if detect_format(df) == 1:
@@ -162,20 +165,20 @@ def create_user(username, role, outlet=None):
         'role': role,
         'outlet': outlet
     }])])
-
+# add new user to existing user, combines old and new data
 ##################################################
 # IT Admin
 ##################################################
 def create_system():
     global sales_df
     
-    show_files()
+    show_files() # show all available csv, user selects and assigns name
     file = input("Enter file: ")
     outlet = input("Outlet name: ")
     
     sales_df = load_outlet(file, outlet)
     
-    create_user(outlet, "outlet", outlet)
+    create_user(outlet, "outlet", outlet) # create new user account
     
     save_data()
     print("System created\n")
@@ -189,7 +192,7 @@ def add_outlet():
     
     df = load_outlet(file, outlet)
     
-    sales_df = pd.concat([sales_df, df])
+    sales_df = pd.concat([sales_df, df]) # combines new outlet to existing
     
     create_user(outlet, "outlet", outlet)
     
@@ -205,7 +208,7 @@ def reset_password():
 ##################################################
 # Stock update
 ##################################################
-def update_stock_for_week(week):
+def update_stock_for_week(week): # loops through data so stock update happens in correct order
     
     week_df = sales_df[sales_df['week'] == week]
     
@@ -219,13 +222,13 @@ def update_stock_for_week(week):
             ].sort_values('date_serial')
             
             for i in range(1, len(subset)):
-                prev_stock = subset.iloc[i-1]['stock']
-                sales = subset.iloc[i]['sales']
+                prev_stock = subset.iloc[i-1]['stock'] # previous day stock
+                sales = subset.iloc[i]['sales'] # todays sales and delivery values
                 delivery = subset.iloc[i]['delivery']
                 
                 new_stock = prev_stock - sales + delivery
                 
-                sales_df.loc[subset.index[i], 'stock'] = new_stock
+                sales_df.loc[subset.index[i], 'stock'] = new_stock # updates with new stock
 
 ##################################################
 # Outlet User
@@ -235,12 +238,14 @@ def add_sales(user):
     
     outlet = user['outlet']
     
+    # Ensure numeric columns are correct
     sales_df[['stock','delivery','sales']] = sales_df[['stock','delivery','sales']].astype(float)
     
     product = input("Product: ")
     day = int(input("Day (1-6): "))
     sales = float(input("Sales: "))
     
+    # Find today's row
     mask_today = (
         (sales_df['outlet'] == outlet) &
         (sales_df['product'] == product) &
@@ -252,8 +257,10 @@ def add_sales(user):
         print("Invalid product/day\n")
         return
     
+    # Set sales
     sales_df.loc[mask_today, 'sales'] = sales
     
+    # Get previous day's stock
     if day == 1:
         prev_stock = float(sales_df.loc[mask_today, 'delivery'].values[0])
     else:
@@ -265,16 +272,21 @@ def add_sales(user):
         )
         prev_stock = float(sales_df.loc[mask_prev, 'stock'].values[0])
     
+    # Get today's delivery
     delivery = float(sales_df.loc[mask_today, 'delivery'].values[0])
     
+    # Calculate new stock
     new_stock = prev_stock - sales + delivery
     
+    # Prevent negative stock
     if new_stock < 0:
         print("Not enough stock!")
         return
     
+    # Update today's stock
     sales_df.loc[mask_today, 'stock'] = new_stock
     
+    # Update future days
     for d in range(day + 1, 7):
         mask_future = (
             (sales_df['outlet'] == outlet) &
@@ -299,27 +311,59 @@ def add_sales(user):
     print("Sales added, stock updated\n")
     save_data()
 
-def view_stock(user):
+def view_stock(user): # current user outlet and current week
     
     df = sales_df[
         (sales_df['outlet'] == user['outlet']) &
         (sales_df['week'] == current_week)
     ]
     
-    latest = df.sort_values('date_serial').groupby('product').last().reset_index()
+    latest = df.sort_values('date_serial').groupby('product').last().reset_index() # most recent record for each product
     
     print("\nCURRENT STOCK:")
     print(latest[['product','stock','price']], "\n")
 
-def view_old_data(user):
+def view_old_data(user): # filters week user wants to view
     week = int(input("Enter week: "))
     df = sales_df[
         (sales_df['outlet'] == user['outlet']) &
-        (sales_df['week'] == week)
+        (sales_df['week'] == int(week))
     ]
     print(df)
+    
+###################################################
+# Head Office
+###################################################
+def create_head_office():
+    username = input("New HO username: ")
+    create_user(username, "HO")
+    save_data()
+    print("Head office user created\n")
 
-def verify_week(user):
+def process_update(file):
+    global sales_df, current_week
+    
+    df = pd.read_csv(file, header=None)
+    
+    current_week += 1
+    
+    # load both outlets automatically
+    df1 = load_format1(df, "Outlet1")
+    df2 = load_format1(df, "Outlet2")
+    
+    # combine them
+    df_new = pd.concat([df1, df2])
+    
+    # set correct week
+    df_new['week'] = current_week
+    
+    # add to main dataset
+    sales_df = pd.concat([sales_df, df_new])
+    
+    save_data()
+    print("Update processed\n")
+
+def verify_week(user): # locks current week
     global sales_df
     
     sales_df.loc[
@@ -334,7 +378,7 @@ def verify_week(user):
 ##################################################
 # Menus
 ##################################################
-def it_menu():
+def it_menu(): # shows menu until user exits, any other input breaks loop
     while True:
         print("1.Create System 2.Add Outlet 3.Reset Password 4.Create HO User 5.Exit")
         c = input()
@@ -346,7 +390,7 @@ def it_menu():
         else: break
 
 
-def outlet_menu(user):
+def outlet_menu(user): # loop menu until user exits
     while True:
         print("1.Add Sales 2.View Stock 3.Verify Week 4.View Old Data 5.Exit")
         c = input()
@@ -360,23 +404,29 @@ def outlet_menu(user):
 def process_week():
     global sales_df, current_week
     
+    # filter current week
     weekly = sales_df[sales_df['week'] == current_week]
     
+    #  remove any bad rows
     weekly = weekly[weekly['product'].str.lower() != 'product']
     
+    # group data
     report = weekly.groupby(['outlet', 'product']).agg({
         'sales': 'sum',
         'stock': 'last',
         'price': 'last'
     }).reset_index()
     
+    # calculate revenue
     report['revenue'] = report['sales'] * report['price']
     
     print("\nWEEKLY REPORT:")
     print(report)
     
+    # save report
     report.to_csv(f"weekly_report_week{current_week}.csv", index=False)
     
+    # lock the week
     sales_df.loc[sales_df['week'] == current_week, 'locked'] = True
     
     save_data()
@@ -395,45 +445,17 @@ def ho_menu():
         else: break
 
 ###################################################
-# Head Office
-###################################################
-def create_head_office():
-    username = input("New HO username: ")
-    create_user(username, "HO")
-    save_data()
-    print("Head office user created\n")
-
-def process_update(file):
-    global sales_df, current_week
-    
-    df = pd.read_csv(file, header=None)
-    
-    current_week += 1
-    
-    df1 = load_format1(df, "Outlet1")
-    df2 = load_format1(df, "Outlet2")
-    
-    df_new = pd.concat([df1, df2])
-    
-    df_new['week'] = current_week
-    
-    sales_df = pd.concat([sales_df, df_new])
-    
-    save_data()
-    print("Update processed\n")
-
-##################################################
 # Main
-##################################################
+###################################################
 load_data()
 
-while True:
+while True: # loop runs until manually stopped
     user = login()
     
-    if user is None:
+    if user is None: # if login fails restart loop
         continue
     
-    if user['role']=="IT":
+    if user['role']=="IT": # each user accesses different features/functions
         it_menu()
     elif user['role']=="outlet":
         outlet_menu(user)
