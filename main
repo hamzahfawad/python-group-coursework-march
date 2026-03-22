@@ -1,1 +1,256 @@
+print("PROGRAMME STARTED")
+import pandas as pd
+import os
 
+##################################################
+# Global Variables
+##################################################
+sales_file = "sales_data.csv"
+users_file = "users.csv"
+current_week = 1 # tracks current week number
+
+##################################################
+# Load / Save
+##################################################
+def load_data():
+    global sales_df, users_df
+    
+    if os.path.exists(sales_file): # check if sales data file exists
+        sales_df = pd.read_csv(sales_file)
+    else: # if it does not exist create a dataframe with the following columns
+        sales_df = pd.DataFrame(columns=[
+            'outlet','product','date_serial',
+            'sales','delivery','stock',
+            'price','week','locked'
+        ])
+    
+    if os.path.exists(users_file): # check if users data file exists, if not create dataframe
+        users_df = pd.read_csv(users_file)
+    else:
+        users_df = pd.DataFrame([{
+            'username':'ITAdmin', # admin username
+            'password':'Admin',  # admin password
+            'role':'IT',
+            'outlet':None
+        }])
+
+def save_data(): # save to csv
+    sales_df.to_csv(sales_file, index=False)
+    users_df.to_csv(users_file, index=False)
+
+##################################################
+# Login
+##################################################
+def login(): # user enters login details
+    username = input("ID: ")
+    password = input("Password: ")
+    
+    user = users_df[
+        (users_df['username']==username) &
+        (users_df['password']==password)
+    ]
+    
+    if user.empty: # checks if no match was found, login failure
+        print("Invalid login\n")
+        return None
+    
+    return user.iloc[0]
+
+##################################################
+# File Helper
+##################################################
+def show_files(): # loops through all csv files in current directory
+    print("\nAvailable CSV files:")
+    for f in os.listdir():
+        if f.endswith(".csv"):
+            print(f)
+
+##################################################
+# Format Detection
+##################################################
+def detect_format(df): # converts column names to lowercase, makes check case-insensitive
+    cols = [str(c).lower() for c in df.columns]
+    
+    # if standard columns exist then assume format 2
+    if 'product' in cols and 'sales' in cols:
+        return 2
+    
+    # otherwise assume format 1
+    return 1
+
+##################################################
+# Load format 1
+##################################################
+def load_format1(df, outlet):
+    
+    df = df.iloc[1:]  # remove title row
+    df = df[df.iloc[:,0].str.lower() != "product"]  # remove header row
+
+    products = df.iloc[:, 0].tolist()
+    
+    data = []
+    
+    # Detect which outlet columns to use
+    if outlet == "Outlet1":
+        price_col = 1
+        delivery_col = 2
+    elif outlet == "Outlet2":
+        price_col = 3
+        delivery_col = 4
+    else:
+        return pd.DataFrame()
+    
+    for i in range(len(products)):
+        
+        price = df.iloc[i, price_col]
+        delivery = df.iloc[i, delivery_col]
+        
+        for day in range(1, 7): # create weekly structure
+            data.append({
+                'outlet': outlet,
+                'product': products[i],
+                'date_serial': day,
+                'sales': 0,
+                'delivery': delivery if day == 1 else 0,
+                'stock': delivery,
+                'price': price,
+                'week': 1,
+                'locked': False
+            })
+    
+    return pd.DataFrame(data) # convert list into dataframe
+
+##################################################
+# Load format 2
+##################################################
+def load_format2(df, outlet):
+    
+    df.columns = [c.lower() for c in df.columns] # convert to lowercase for consistency
+    
+    required = ['product','sales','delivery','stock'] # define column names
+    
+    for col in required:
+        if col not in df.columns:
+            print(f"Missing column: {col} → filling with 0")
+            df[col] = 0
+    
+    df['date_serial'] = range(1, len(df)+1)
+    df['outlet'] = outlet
+    df['week'] = 1
+    df['locked'] = False
+    df['price'] = df.get('price', 0)
+    
+    return df[['outlet','product','date_serial','sales','delivery','stock','price','week','locked']] # returns dataframe in this order
+
+##################################################
+# General Loader
+##################################################
+def load_outlet(file, outlet): # detects which format the data is in (format1 or format2)
+    df = pd.read_csv(file)
+    
+    if detect_format(df) == 1:
+        return load_format1(df, outlet)
+    else:
+        return load_format2(df, outlet)
+
+##################################################
+# Create user
+##################################################
+def create_user(username, role, outlet=None):
+    global users_df
+    
+    users_df = pd.concat([users_df, pd.DataFrame([{
+        'username': username,
+        'password': 'Password',
+        'role': role,
+        'outlet': outlet
+    }])])
+
+##################################################
+# IT Admin
+##################################################
+def create_system():
+    global sales_df
+    
+    show_files() # show all available csv, user selects and assigns name
+    file = input("Enter file: ")
+    outlet = input("Outlet name: ")
+    
+    sales_df = load_outlet(file, outlet)
+    
+    create_user(outlet, "outlet", outlet) # create new user account
+    
+    save_data()
+    print("System created\n")
+
+def add_outlet():
+    global sales_df
+    
+    show_files()
+    file = input("File: ")
+    outlet = input("Outlet name: ")
+    
+    df = load_outlet(file, outlet)
+    
+    sales_df = pd.concat([sales_df, df]) # combines new outlet to existing
+    
+    create_user(outlet, "outlet", outlet)
+    
+    save_data()
+    print("Outlet added\n")
+
+def reset_password():
+    user = input("Username: ")
+    users_df.loc[users_df['username']==user,'password'] = "Password"
+    save_data()
+    print("Password reset\n")
+
+###################################################
+# Head Office
+###################################################
+def create_head_office():
+    username = input("New HO username: ")
+    create_user(username, "HO")
+    save_data()
+    print("Head office user created\n")
+
+def process_update(file):
+    global sales_df, current_week
+    
+    df = pd.read_csv(file, header=None)
+    
+    current_week += 1
+    
+    # load both outlets automatically
+    df1 = load_format1(df, "Outlet1")
+    df2 = load_format1(df, "Outlet2")
+    
+    # combine them
+    df_new = pd.concat([df1, df2])
+    
+    # set correct week
+    df_new['week'] = current_week
+    
+    # add to main dataset
+    sales_df = pd.concat([sales_df, df_new])
+    
+    save_data()
+    print("Update processed\n")
+
+###################################################
+# Main
+###################################################
+load_data()
+
+while True: # loop runs until manually stopped
+    user = login()
+    
+    if user is None: # if login fails restart loop
+        continue
+    
+    if user['role']=="IT": # each user accesses different features/functions
+        it_menu()
+    elif user['role']=="outlet":
+        outlet_menu(user)
+    elif user['role']=="HO":
+        ho_menu()
